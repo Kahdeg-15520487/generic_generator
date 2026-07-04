@@ -95,15 +95,9 @@ const POI_COLORS = {
 };
 
 function render() {
-  const realm = worldData.realm;
+  const realm = worldData;
   const view = document.getElementById('view');
-
-  // Find bounds
-  let maxX = 0, maxY = 0;
-  for (const t of realm.terrain) {
-    if (t.x > maxX) maxX = t.x;
-    if (t.y > maxY) maxY = t.y;
-  }
+  let maxX = realm.width || 128, maxY = realm.height || 96;
 
   const step = Math.max(1, Math.floor(maxX / 60));
   const w = Math.floor(maxX / step) + 1;
@@ -131,9 +125,8 @@ function render() {
   }
 
   // Roads
-  ctx.strokeStyle = '#8a6a4a';
-  ctx.lineWidth = 2;
-  for (const seg of worldData.roadSegments) {
+  ctx.strokeStyle = '#8a6a4a'; ctx.lineWidth = 2;
+  for (const seg of (worldData.roads || [])) {
     ctx.beginPath();
     ctx.moveTo(seg.from.x / step * cellSize + 20, seg.from.y / step * cellSize + 20);
     ctx.lineTo(seg.to.x / step * cellSize + 20, seg.to.y / step * cellSize + 20);
@@ -141,18 +134,18 @@ function render() {
   }
 
   // Settlements & POIs
-  for (const s of realm.settlements) {
-    const sx = s.pos.x / step * cellSize + 20;
-    const sy = s.pos.y / step * cellSize + 20;
+  for (const s of (worldData.settlements || [])) {
+    const sx = s.x / step * cellSize + 20;
+    const sy = s.y / step * cellSize + 20;
     const r = s.type === 'city' ? cellSize * 0.6 : cellSize * 0.4;
     ctx.fillStyle = POI_COLORS[s.type] || '#fff';
     ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = '#fff'; ctx.font = `${Math.max(8, cellSize * 0.6)}px monospace`;
     ctx.fillText(s.name.substring(0, 8), sx + r + 2, sy + 4);
   }
-  for (const p of realm.pois) {
-    const px = p.pos.x / step * cellSize + 20;
-    const py = p.pos.y / step * cellSize + 20;
+  for (const p of (worldData.pois || [])) {
+    const px = p.x / step * cellSize + 20;
+    const py = p.y / step * cellSize + 20;
     const r = cellSize * 0.3;
     ctx.fillStyle = POI_COLORS[p.type] || '#ccc';
     ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fill();
@@ -168,12 +161,12 @@ function render() {
     const my = (e.clientY - rect.top - 20) / cellSize * step;
     // Find nearest settlement/POI within threshold
     let best = null, bestDist = Infinity;
-    for (const s of realm.settlements) {
-      const d = Math.hypot(s.pos.x - mx, s.pos.y - my);
+    for (const s of (worldData.settlements || [])) {
+      const d = Math.hypot(s.x - mx, s.y - my);
       if (d < 5 && d < bestDist) { best = s; bestDist = d; }
     }
-    for (const p of realm.pois) {
-      const d = Math.hypot(p.pos.x - mx, p.pos.y - my);
+    for (const p of (worldData.pois || [])) {
+      const d = Math.hypot(p.x - mx, p.y - my);
       if (d < 5 && d < bestDist) { best = p; bestDist = d; }
     }
     if (best) navigateTo(best.id);
@@ -184,12 +177,12 @@ function render() {
     const mx = (e.clientX - rect.left - 20) / cellSize * step;
     const my = (e.clientY - rect.top - 20) / cellSize * step;
     let best = null, bestDist = 5;
-    for (const s of realm.settlements) {
-      const d = Math.hypot(s.pos.x - mx, s.pos.y - my);
+    for (const s of (worldData.settlements || [])) {
+      const d = Math.hypot(s.x - mx, s.y - my);
       if (d < bestDist) { best = s; bestDist = d; }
     }
-    for (const p of realm.pois) {
-      const d = Math.hypot(p.pos.x - mx, p.pos.y - my);
+    for (const p of (worldData.pois || [])) {
+      const d = Math.hypot(p.x - mx, p.y - my);
       if (d < bestDist) { best = p; bestDist = d; }
     }
     canvas.style.cursor = best ? 'pointer' : 'default';
@@ -228,120 +221,113 @@ function renderLocation(loc) {
 }
 
 function renderCity(view, data, loc) {
-  const blds = (data.buildings || []).map(b => {
-    const r = b.coordinates[0];
-    return { x: r[0][0], y: r[0][1], w: r[2][0] - r[0][0], h: r[2][1] - r[0][1] };
-  });
-  const maxX = Math.max(...blds.map(b => b.x + b.w), 50);
-  const maxY = Math.max(...blds.map(b => b.y + b.h), 40);
-  const s = Math.max(4, Math.floor(500 / Math.max(maxX, maxY)));
+  const blds = data.buildings || [];
+  const w = data.width || 80, h = data.height || 60;
+  const s = Math.max(4, Math.floor(500 / Math.max(w, h)));
 
   const canvas = document.createElement('canvas');
-  canvas.width = maxX * s + 20;
-  canvas.height = maxY * s + 20;
+  canvas.width = w * s + 20;
+  canvas.height = h * s + 50;
   const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#2a2a1a'; ctx.fillRect(0,0,canvas.width,canvas.height);
 
-  // Wards
-  for (const d of (data.districts || [])) {
-    const [x1,y1] = d.border[0], [x2,y2] = d.border[2];
-    ctx.fillStyle = 'rgba(80,80,120,0.2)';
-    ctx.fillRect(x1*s+10, y1*s+10, (x2-x1)*s, (y2-y1)*s);
-    ctx.strokeStyle = '#444';
-    ctx.strokeRect(x1*s+10, y1*s+10, (x2-x1)*s, (y2-y1)*s);
-    ctx.fillStyle = '#aaa';
-    ctx.font = `${Math.max(8,s*2)}px monospace`;
-    ctx.fillText(d.name || d.type, x1*s+14, y1*s+14+s*1.5);
+  // Wards (colored cells)
+  const wardColors = ['#3a3a2a','#4a3a2a','#3a4a3a','#4a4a3a','#3a3a4a','#4a3a4a','#3a4a4a','#4a3a3a','#2a3a3a','#3a2a3a'];
+  for (let wi = 0; wi < (data.wards||[]).length; wi++) {
+    const ward = data.wards[wi];
+    ctx.fillStyle = wardColors[wi % wardColors.length];
+    for (const c of (ward.cells || [])) {
+      ctx.fillRect(c.x * s + 10, c.y * s + 10, s-1, s-1);
+    }
+    // Ward label
+    const cx = ward.center.x * s + 10, cy = ward.center.y * s + 10;
+    ctx.fillStyle = '#fff'; ctx.font = Math.max(8,s*1.5) + 'px monospace';
+    ctx.fillText(ward.name, cx, cy);
   }
 
   // Buildings
   ctx.fillStyle = '#8a6a4a';
-  for (const b of blds) {
-    ctx.fillRect(b.x*s+10, b.y*s+10, b.w*s, b.h*s);
-  }
-  ctx.strokeStyle = '#5a4a2a';
-  for (const b of blds) {
-    ctx.strokeRect(b.x*s+10, b.y*s+10, b.w*s, b.h*s);
+  for (const b of blds) ctx.fillRect(b.x*s+10, b.y*s+10, b.w*s, b.h*s);
+
+  // Walls
+  ctx.strokeStyle = '#aaa'; ctx.lineWidth = 2;
+  for (const w of (data.walls || [])) {
+    ctx.beginPath(); ctx.moveTo(w.x1*s+10, w.y1*s+10); ctx.lineTo(w.x2*s+10, w.y2*s+10); ctx.stroke();
   }
 
-  // Interactive buildings (children)
-  const childMap = new Map();
-  for (const c of (loc.children || [])) childMap.set(c.id, c);
+  // Gates
+  ctx.fillStyle = '#e94560';
+  for (const g of (data.gates || [])) ctx.fillRect(g.x*s+8, g.y*s+8, s+4, s+4);
 
   canvas.onclick = (e) => {
     const rect = canvas.getBoundingClientRect();
     const mx = (e.clientX - rect.left - 10) / s;
     const my = (e.clientY - rect.top - 10) / s;
-    // Find building under click
-    for (let i = 0; i < blds.length; i++) {
+    for (let i = 0; i < Math.min(blds.length, (loc.children||[]).length); i++) {
       const b = blds[i];
       if (mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h) {
-        const childId = loc.children?.[i];
-        if (childId) navigateTo(childId);
-        break;
+        const childId = loc.children[i]; if (childId) navigateTo(childId); break;
       }
     }
   };
 
   view.innerHTML = '';
   view.appendChild(canvas);
-  view.innerHTML += `<div class="stats"><span>${loc.name}</span><br>${data.districts?.length||0} districts<br>${blds.length} buildings<br>${loc.children?.length||0} interiors</div>`;
+  view.innerHTML += '<div class="stats"><span>' + loc.name + '</span><br>' + (data.wards||[]).length + ' wards<br>' + blds.length + ' buildings</div>';
 }
 
 function renderVillage(view, data, _loc) {
-  const blds = (data.buildings || []).map(b => {
-    const r = b.coordinates[0];
-    return { x: r[0][0], y: r[0][1], w: r[2][0] - r[0][0], h: r[2][1] - r[0][1] };
-  });
-  const [bx,,bw,bh] = data.bounds || [0,0,60,40];
-  const s = Math.max(4, Math.floor(500 / Math.max(bw, bh)));
+  const w = data.width || 60, h = data.height || 40;
+  const s = Math.max(4, Math.floor(500 / Math.max(w, h)));
 
   const canvas = document.createElement('canvas');
-  canvas.width = bw * s + 20;
-  canvas.height = bh * s + 20;
+  canvas.width = w * s + 20;
+  canvas.height = h * s + 20;
   const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#3a5a2a'; ctx.fillRect(0,0,canvas.width,canvas.height);
 
-  ctx.fillStyle = '#3a5a2a';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  // Farmland
+  ctx.fillStyle = '#7a9a3a';
+  for (const f of (data.farmland || [])) ctx.fillRect(f.x*s+10, f.y*s+10, f.w*s, f.h*s);
 
   // Roads
   ctx.strokeStyle = '#8a7a5a'; ctx.lineWidth = 3;
   for (const r of (data.roads || [])) {
-    const pts = r.coordinates;
     ctx.beginPath();
-    ctx.moveTo(pts[0][0]*s+10, pts[0][1]*s+10);
-    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0]*s+10, pts[i][1]*s+10);
+    ctx.moveTo(r.points[0].x*s+10, r.points[0].y*s+10);
+    for (let i = 1; i < r.points.length; i++) ctx.lineTo(r.points[i].x*s+10, r.points[i].y*s+10);
     ctx.stroke();
   }
 
   // Buildings
   ctx.fillStyle = '#6a4a2a';
-  for (const b of blds) ctx.fillRect(b.x*s+10, b.y*s+10, b.w*s, b.h*s);
+  for (const b of (data.buildings || [])) ctx.fillRect(b.x*s+10, b.y*s+10, b.w*s, b.h*s);
+
+  // Forest
+  ctx.fillStyle = '#2a5a1a';
+  for (const t of (data.forest || [])) ctx.fillRect(t.x*s+10, t.y*s+10, s, s);
 
   // Water
   if (data.water) {
-    ctx.fillStyle = 'rgba(60,120,180,0.5)';
-    for (const w of data.water) {
-      ctx.beginPath();
-      const ring = w.coordinates[0];
-      ctx.moveTo(ring[0][0]*s+10, ring[0][1]*s+10);
-      for (let i = 1; i < ring.length; i++) ctx.lineTo(ring[i][0]*s+10, ring[i][1]*s+10);
-      ctx.fill();
-    }
+    ctx.strokeStyle = '#4a8ac0'; ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(data.water.points[0].x*s+10, data.water.points[0].y*s+10);
+    for (let i = 1; i < data.water.points.length; i++) ctx.lineTo(data.water.points[i].x*s+10, data.water.points[i].y*s+10);
+    ctx.stroke();
   }
 
   // Palisade
   if (data.palisade) {
     ctx.strokeStyle = '#5a4a3a'; ctx.lineWidth = 2;
     ctx.beginPath();
-    const pts = data.palisade.coordinates;
-    ctx.moveTo(pts[0][0]*s+10, pts[0][1]*s+10);
-    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0]*s+10, pts[i][1]*s+10);
-    ctx.stroke();
+    ctx.moveTo(data.palisade[0].x1*s+10, data.palisade[0].y1*s+10);
+    for (const seg of data.palisade) ctx.lineTo(seg.x2*s+10, seg.y2*s+10);
+    ctx.closePath(); ctx.stroke();
   }
 
   view.innerHTML = '';
   view.appendChild(canvas);
-  view.innerHTML += `<div class="stats"><span>${data.values?.generator||'village'}</span><br>${blds.length} buildings<br>${data.roads?.length||0} roads</div>`;
+  view.innerHTML += '<div class="stats"><span>Village</span><br>' + (data.buildings||[]).length + ' buildings<br>' + (data.roads||[]).length + ' roads</div>';
 }
 
 function renderDungeon(view, data) {
