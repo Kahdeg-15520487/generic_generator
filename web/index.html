@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>World Navigator</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Courier New', monospace; background: #1a1a2e; color: #e0e0e0; overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
+header { background: #16213e; padding: 8px 16px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #0f3460; flex-shrink: 0; }
+header h1 { font-size: 16px; color: #e94560; }
+header button { background: #0f3460; color: #e0e0e0; border: 1px solid #533483; padding: 6px 14px; cursor: pointer; font-family: inherit; font-size: 13px; border-radius: 4px; }
+header button:hover { background: #533483; }
+header .breadcrumb { font-size: 13px; color: #a0a0c0; }
+header .breadcrumb a { color: #e94560; cursor: pointer; text-decoration: none; }
+header .breadcrumb a:hover { text-decoration: underline; }
+#view { flex: 1; overflow: auto; position: relative; }
+canvas { display: block; }
+pre { padding: 16px; font-size: 11px; line-height: 1.2; white-space: pre; overflow: auto; }
+.info { position: absolute; bottom: 12px; left: 12px; background: rgba(22,33,62,0.9); padding: 8px 14px; border-radius: 6px; font-size: 12px; border: 1px solid #0f3460; max-width: 300px; }
+.stats { position: absolute; top: 12px; right: 12px; background: rgba(22,33,62,0.9); padding: 8px 14px; border-radius: 6px; font-size: 11px; border: 1px solid #0f3460; }
+.stats span { color: #e94560; }
+.loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); color: #e94560; font-size: 20px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🌍 World Navigator</h1>
+  <button onclick="goUp()" id="btnUp" disabled>↑ Up</button>
+  <button onclick="regenerate()">🔄 New World</button>
+  <span class="breadcrumb" id="breadcrumb"></span>
+</header>
+
+<div id="view"><div class="loading">Generating world...</div></div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let worldData = null;
+let currentId = null;
+let path = []; // breadcrumb stack
+
+// ── API ────────────────────────────────────────────────────────────────────
+async function api(path) {
+  const res = await fetch(path);
+  return res.json();
+}
+
+async function loadWorld() {
+  worldData = await api('/api/world');
+  currentId = worldData.realmId;
+  path = [{ id: currentId, name: 'Realm', type: 'realm' }];
+  render();
+}
+
+async function navigateTo(id) {
+  const loc = await api('/api/location?id=' + id);
+  if (loc.error) return;
+  currentId = id;
+  path.push({ id, name: loc.name, type: loc.type });
+  renderLocation(loc);
+  updateUI();
+}
+
+async function goUp() {
+  if (path.length <= 1) return;
+  path.pop();
+  const parent = path[path.length - 1];
+  if (parent.type === 'realm') {
+    currentId = worldData.realmId;
+    render();
+  } else {
+    const loc = await api('/api/location?id=' + parent.id);
+    navigateTo(parent.id);
+  }
+}
+
+async function regenerate() {
+  document.getElementById('view').innerHTML = '<div class="loading">Generating...</div>';
+  await api('/api/regenerate');
+  await loadWorld();
+}
+
+// ── Rendering ──────────────────────────────────────────────────────────────
+const TERRAIN_COLORS = {
+  ocean: '#1a3a5c', sea: '#1e4d7a', lake: '#2468a0', river: '#3b8ed4',
+  plain: '#3a5a2a', grassland: '#4a7a3a', forest: '#2a4a1a', swamp: '#3a4a2a',
+  hill: '#5a4a3a', mountain: '#6a6a6a', desert: '#c4a44a',
+  farmland: '#7a9a3a', urban: '#8a8a7a',
+};
+
+const POI_COLORS = {
+  city: '#e94560', village: '#e9a460', dungeon: '#a945e9',
+  cave: '#45a9e9', landmark: '#45e9a4', ruin: '#a9a945', tower: '#e9e945', camp: '#e945a9',
+};
+
+function render() {
+  const realm = worldData.realm;
+  const view = document.getElementById('view');
+
+  // Find bounds
+  let maxX = 0, maxY = 0;
+  for (const t of realm.terrain) {
+    if (t.x > maxX) maxX = t.x;
+    if (t.y > maxY) maxY = t.y;
+  }
+
+  const step = Math.max(1, Math.floor(maxX / 60));
+  const w = Math.floor(maxX / step) + 1;
+  const h = Math.floor(maxY / step) + 1;
+  const cellSize = Math.max(8, Math.floor(600 / Math.max(w, h)));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = w * cellSize + 40;
+  canvas.height = h * cellSize + 40;
+  canvas.style.cursor = 'pointer';
+  const ctx = canvas.getContext('2d');
+
+  // Terrain
+  const terrainMap = new Map();
+  for (const t of realm.terrain) {
+    const gx = Math.floor(t.x / step), gy = Math.floor(t.y / step);
+    terrainMap.set(`${gx},${gy}`, t.type);
+  }
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const type = terrainMap.get(`${x},${y}`) || 'ocean';
+      ctx.fillStyle = TERRAIN_COLORS[type] || '#333';
+      ctx.fillRect(x * cellSize + 20, y * cellSize + 20, cellSize, cellSize);
+    }
+  }
+
+  // Roads
+  ctx.strokeStyle = '#8a6a4a';
+  ctx.lineWidth = 2;
+  for (const seg of worldData.roadSegments) {
+    ctx.beginPath();
+    ctx.moveTo(seg.from.x / step * cellSize + 20, seg.from.y / step * cellSize + 20);
+    ctx.lineTo(seg.to.x / step * cellSize + 20, seg.to.y / step * cellSize + 20);
+    ctx.stroke();
+  }
+
+  // Settlements & POIs
+  for (const s of realm.settlements) {
+    const sx = s.pos.x / step * cellSize + 20;
+    const sy = s.pos.y / step * cellSize + 20;
+    const r = s.type === 'city' ? cellSize * 0.6 : cellSize * 0.4;
+    ctx.fillStyle = POI_COLORS[s.type] || '#fff';
+    ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.font = `${Math.max(8, cellSize * 0.6)}px monospace`;
+    ctx.fillText(s.name.substring(0, 8), sx + r + 2, sy + 4);
+  }
+  for (const p of realm.pois) {
+    const px = p.pos.x / step * cellSize + 20;
+    const py = p.pos.y / step * cellSize + 20;
+    const r = cellSize * 0.3;
+    ctx.fillStyle = POI_COLORS[p.type] || '#ccc';
+    ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fill();
+  }
+
+  view.innerHTML = '';
+  view.appendChild(canvas);
+
+  // Click handler
+  canvas.onclick = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = (e.clientX - rect.left - 20) / cellSize * step;
+    const my = (e.clientY - rect.top - 20) / cellSize * step;
+    // Find nearest settlement/POI within threshold
+    let best = null, bestDist = Infinity;
+    for (const s of realm.settlements) {
+      const d = Math.hypot(s.pos.x - mx, s.pos.y - my);
+      if (d < 5 && d < bestDist) { best = s; bestDist = d; }
+    }
+    for (const p of realm.pois) {
+      const d = Math.hypot(p.pos.x - mx, p.pos.y - my);
+      if (d < 5 && d < bestDist) { best = p; bestDist = d; }
+    }
+    if (best) navigateTo(best.id);
+  };
+
+  canvas.onmousemove = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = (e.clientX - rect.left - 20) / cellSize * step;
+    const my = (e.clientY - rect.top - 20) / cellSize * step;
+    let best = null, bestDist = 5;
+    for (const s of realm.settlements) {
+      const d = Math.hypot(s.pos.x - mx, s.pos.y - my);
+      if (d < bestDist) { best = s; bestDist = d; }
+    }
+    for (const p of realm.pois) {
+      const d = Math.hypot(p.pos.x - mx, p.pos.y - my);
+      if (d < bestDist) { best = p; bestDist = d; }
+    }
+    canvas.style.cursor = best ? 'pointer' : 'default';
+    document.getElementById('tooltip')?.remove();
+    if (best) {
+      const tip = document.createElement('div');
+      tip.id = 'tooltip';
+      tip.className = 'info';
+      tip.style.left = (e.clientX - rect.left + 12) + 'px';
+      tip.style.top = (e.clientY - rect.top + 12) + 'px';
+      tip.innerHTML = `<b>${best.name}</b><br>${best.type}`;
+      view.appendChild(tip);
+    }
+  };
+
+  updateUI();
+}
+
+function renderLocation(loc) {
+  const view = document.getElementById('view');
+  const data = loc.data;
+
+  if (loc.type === 'city' && data) {
+    renderCity(view, data, loc);
+  } else if (loc.type === 'village' && data) {
+    renderVillage(view, data, loc);
+  } else if (loc.type === 'dungeon' && data) {
+    renderDungeon(view, data);
+  } else if (loc.type === 'cave' && data) {
+    renderCave(view, data);
+  } else if (loc.type === 'dwelling' && data) {
+    renderDwelling(view, data);
+  } else {
+    view.innerHTML = `<pre>${JSON.stringify(loc, null, 2)}</pre>`;
+  }
+}
+
+function renderCity(view, data, loc) {
+  const blds = (data.buildings || []).map(b => {
+    const r = b.coordinates[0];
+    return { x: r[0][0], y: r[0][1], w: r[2][0] - r[0][0], h: r[2][1] - r[0][1] };
+  });
+  const maxX = Math.max(...blds.map(b => b.x + b.w), 50);
+  const maxY = Math.max(...blds.map(b => b.y + b.h), 40);
+  const s = Math.max(4, Math.floor(500 / Math.max(maxX, maxY)));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = maxX * s + 20;
+  canvas.height = maxY * s + 20;
+  const ctx = canvas.getContext('2d');
+
+  // Wards
+  for (const d of (data.districts || [])) {
+    const [x1,y1] = d.border[0], [x2,y2] = d.border[2];
+    ctx.fillStyle = 'rgba(80,80,120,0.2)';
+    ctx.fillRect(x1*s+10, y1*s+10, (x2-x1)*s, (y2-y1)*s);
+    ctx.strokeStyle = '#444';
+    ctx.strokeRect(x1*s+10, y1*s+10, (x2-x1)*s, (y2-y1)*s);
+    ctx.fillStyle = '#aaa';
+    ctx.font = `${Math.max(8,s*2)}px monospace`;
+    ctx.fillText(d.name || d.type, x1*s+14, y1*s+14+s*1.5);
+  }
+
+  // Buildings
+  ctx.fillStyle = '#8a6a4a';
+  for (const b of blds) {
+    ctx.fillRect(b.x*s+10, b.y*s+10, b.w*s, b.h*s);
+  }
+  ctx.strokeStyle = '#5a4a2a';
+  for (const b of blds) {
+    ctx.strokeRect(b.x*s+10, b.y*s+10, b.w*s, b.h*s);
+  }
+
+  // Interactive buildings (children)
+  const childMap = new Map();
+  for (const c of (loc.children || [])) childMap.set(c.id, c);
+
+  canvas.onclick = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = (e.clientX - rect.left - 10) / s;
+    const my = (e.clientY - rect.top - 10) / s;
+    // Find building under click
+    for (let i = 0; i < blds.length; i++) {
+      const b = blds[i];
+      if (mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h) {
+        const childId = loc.children?.[i];
+        if (childId) navigateTo(childId);
+        break;
+      }
+    }
+  };
+
+  view.innerHTML = '';
+  view.appendChild(canvas);
+  view.innerHTML += `<div class="stats"><span>${loc.name}</span><br>${data.districts?.length||0} districts<br>${blds.length} buildings<br>${loc.children?.length||0} interiors</div>`;
+}
+
+function renderVillage(view, data, _loc) {
+  const blds = (data.buildings || []).map(b => {
+    const r = b.coordinates[0];
+    return { x: r[0][0], y: r[0][1], w: r[2][0] - r[0][0], h: r[2][1] - r[0][1] };
+  });
+  const [bx,,bw,bh] = data.bounds || [0,0,60,40];
+  const s = Math.max(4, Math.floor(500 / Math.max(bw, bh)));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = bw * s + 20;
+  canvas.height = bh * s + 20;
+  const ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = '#3a5a2a';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Roads
+  ctx.strokeStyle = '#8a7a5a'; ctx.lineWidth = 3;
+  for (const r of (data.roads || [])) {
+    const pts = r.coordinates;
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0]*s+10, pts[0][1]*s+10);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0]*s+10, pts[i][1]*s+10);
+    ctx.stroke();
+  }
+
+  // Buildings
+  ctx.fillStyle = '#6a4a2a';
+  for (const b of blds) ctx.fillRect(b.x*s+10, b.y*s+10, b.w*s, b.h*s);
+
+  // Water
+  if (data.water) {
+    ctx.fillStyle = 'rgba(60,120,180,0.5)';
+    for (const w of data.water) {
+      ctx.beginPath();
+      const ring = w.coordinates[0];
+      ctx.moveTo(ring[0][0]*s+10, ring[0][1]*s+10);
+      for (let i = 1; i < ring.length; i++) ctx.lineTo(ring[i][0]*s+10, ring[i][1]*s+10);
+      ctx.fill();
+    }
+  }
+
+  // Palisade
+  if (data.palisade) {
+    ctx.strokeStyle = '#5a4a3a'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    const pts = data.palisade.coordinates;
+    ctx.moveTo(pts[0][0]*s+10, pts[0][1]*s+10);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0]*s+10, pts[i][1]*s+10);
+    ctx.stroke();
+  }
+
+  view.innerHTML = '';
+  view.appendChild(canvas);
+  view.innerHTML += `<div class="stats"><span>${data.values?.generator||'village'}</span><br>${blds.length} buildings<br>${data.roads?.length||0} roads</div>`;
+}
+
+function renderDungeon(view, data) {
+  const rects = data.rects || [];
+  let mx = 0, my = 0;
+  for (const r of rects) { if (r.x + r.w > mx) mx = r.x + r.w; if (r.y + r.h > my) my = r.y + r.h; }
+  const s = Math.max(6, Math.floor(450 / Math.max(mx, my)));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = mx * s + 40;
+  canvas.height = my * s + 50;
+  const ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Rooms
+  ctx.fillStyle = '#2a3a4a';
+  ctx.strokeStyle = '#5a6a7a'; ctx.lineWidth = 2;
+  for (const r of rects) {
+    const rx = r.x * s + 20, ry = r.y * s + 40;
+    ctx.fillRect(rx, ry, r.w * s, r.h * s);
+    ctx.strokeRect(rx, ry, r.w * s, r.h * s);
+  }
+
+  // Doors
+  ctx.fillStyle = '#e94560';
+  for (const d of (data.doors || [])) {
+    ctx.fillRect(d.x * s + 20, d.y * s + 40, s, s);
+  }
+
+  // Notes
+  ctx.fillStyle = '#e0e0e0'; ctx.font = `${Math.max(8,s*1.2)}px monospace`;
+  for (const n of (data.notes || [])) {
+    ctx.fillText(n.ref, n.pos.x * s + 22, n.pos.y * s + 44);
+  }
+
+  view.innerHTML = '';
+  view.appendChild(canvas);
+  view.innerHTML += `<div class="stats"><span>${data.title||'Dungeon'}</span><br>${rects.length} rooms<br>${data.doors?.length||0} doors<br>${data.notes?.length||0} notes</div>`;
+}
+
+function renderCave(view, data) {
+  const w = data.width || 40, h = data.height || 30;
+  const s = Math.max(6, Math.floor(500 / Math.max(w, h)));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = w * s + 20;
+  canvas.height = h * s + 50;
+  const ctx = canvas.getContext('2d');
+
+  // Background
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Cave cells
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const cell = (data.grid || [])[y]?.[x] || 0;
+      if (cell === 1) ctx.fillStyle = '#3a4a3a';
+      else if (cell === 2) ctx.fillStyle = '#2a5a8a';
+      else continue;
+      ctx.fillRect(x * s + 10, y * s + 40, s, s);
+    }
+  }
+
+  // Exits
+  ctx.fillStyle = '#e94560';
+  for (const e of (data.exits || [])) {
+    ctx.fillRect(e.x * s + 10, e.y * s + 40, s, s);
+  }
+
+  view.innerHTML = '';
+  view.appendChild(canvas);
+  view.innerHTML += `<div class="stats"><span>${data.title||'Cave'}</span><br>${w}×${h} grid<br>${data.areas?.length||0} chambers<br>${data.exits?.length||0} exits</div>`;
+}
+
+function renderDwelling(view, data) {
+  const groundFloor = (data.floors || []).find(f => f.level === 0);
+  if (!groundFloor) { view.innerHTML = '<pre>No ground floor</pre>'; return; }
+
+  const cells = groundFloor.rooms.flatMap(r => r.cells);
+  let mx = 0, my = 0;
+  for (const c of cells) { if (c.i > mx) mx = c.i; if (c.j > my) my = c.j; }
+  const s = Math.max(10, Math.floor(400 / Math.max(mx + 1, my + 1)));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = (mx + 2) * s + 10;
+  canvas.height = (my + 3) * s + 10;
+  const ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = '#2a2a3e';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const COLORS = ['#3a5a3a','#4a6a4a','#5a7a5a','#4a5a6a','#5a4a4a','#6a5a3a','#3a4a5a','#5a3a4a'];
+  for (let ri = 0; ri < groundFloor.rooms.length; ri++) {
+    const room = groundFloor.rooms[ri];
+    ctx.fillStyle = COLORS[ri % COLORS.length];
+    for (const c of room.cells) {
+      ctx.fillRect(c.i * s + 5, c.j * s + 5, s - 1, s - 1);
+    }
+    // Label
+    const cx = room.cells.reduce((a,b) => a + b.i, 0) / room.cells.length;
+    const cy = room.cells.reduce((a,b) => a + b.j, 0) / room.cells.length;
+    ctx.fillStyle = '#fff'; ctx.font = `${Math.max(8,s*0.5)}px monospace`;
+    ctx.fillText(room.name?.[0] || '?', cx * s + 5 + s/3, cy * s + 5 + s*0.7);
+  }
+
+  // Doors
+  ctx.fillStyle = '#e94560';
+  for (const d of groundFloor.doors || []) {
+    ctx.fillRect(d.edge.cell.i * s + 5 + s/4, d.edge.cell.j * s + 5 + s/4, s/2, s/2);
+  }
+
+  view.innerHTML = '';
+  view.appendChild(canvas);
+  view.innerHTML += `<div class="stats"><span>Dwelling</span><br>${data.floors?.length||0} floors<br>${groundFloor.rooms.length} rooms</div>`;
+}
+
+// ── UI ─────────────────────────────────────────────────────────────────────
+function updateUI() {
+  const bc = document.getElementById('breadcrumb');
+  bc.innerHTML = path.map((p, i) =>
+    i < path.length - 1
+      ? `<a onclick="goToIndex(${i})">${p.name}</a> ›`
+      : `<b>${p.name}</b>`
+  ).join(' ');
+  document.getElementById('btnUp').disabled = path.length <= 1;
+}
+
+async function goToIndex(i) {
+  path = path.slice(0, i + 1);
+  if (i === 0) {
+    currentId = worldData.realmId;
+    render();
+  } else {
+    await navigateTo(path[i].id);
+  }
+}
+
+// ── Start ──────────────────────────────────────────────────────────────────
+loadWorld();
+window.goUp = goUp;
+window.goToIndex = goToIndex;
+window.regenerate = regenerate;
+</script>
+</body>
+</html>
