@@ -12,8 +12,9 @@ import { RNG } from "../lib/rng.js";
 import { RealmGenerator } from "../realm/generator.js";
 import { CityGenerator, type CityData } from "../city/generator.js";
 import { VillageGenerator, type VillageData } from "../village/generator.js";
-import { DwellingsGenerator } from "../dwellings/generator.js";
 import { DungeonGenerator } from "../dungeon/generator.js";
+import { CaveGenerator } from "../cave/generator.js";
+import { DwellingsGenerator } from "../dwellings/generator.js";
 import type { World, Location, Point, RoadConnection, RealmData, SettlementPlacement, POIPlacement } from "../core/types.js";
 
 // ── Seed derivation ─────────────────────────────────────────────────────────
@@ -212,9 +213,12 @@ export class WorldBuilder {
   private generatePOI(locId: string, seed: number, poi: POIPlacement, index: number) {
     let data: unknown;
 
-    if (poi.type === "dungeon" || poi.type === "cave") {
+    if (poi.type === "dungeon") {
       const gen = new DungeonGenerator();
       data = gen.generate(seed, ["small"]);
+    } else if (poi.type === "cave") {
+      const gen = new CaveGenerator();
+      data = gen.generate(seed);
     }
 
     this.world.cache[locId] = data;
