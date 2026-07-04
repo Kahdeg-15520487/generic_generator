@@ -6,6 +6,11 @@ export type { House, Floor, Room as DwellingRoom, Door as DwellingDoor, Window, 
 export { DungeonGenerator } from "./dungeon/generator.js";
 export type { DungeonData, Rect, Door as DungeonDoor, Note, Column, DungeonTag } from "./dungeon/types.js";
 
+// Realm (Perilous Shores)
+export { RealmGenerator } from "./realm/generator.js";
+export { renderRealm } from "./realm/render.js";
+export type * from "./core/types.js";
+
 // Shared libraries
 export { RNG } from "./lib/rng.js";
 export { Dir } from "./lib/dir.js";
