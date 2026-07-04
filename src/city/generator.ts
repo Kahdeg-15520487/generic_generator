@@ -132,7 +132,6 @@ export class CityGenerator {
     }
 
     // ── Phase 2: Grow wards outward from seeds ──────────────────────────
-    // Use flood-fill growth: each ward expands into adjacent empty cells
     for (const pw of placedWards) {
       const wardIdx = this.wards.length;
       const ward: Ward = {
@@ -143,30 +142,29 @@ export class CityGenerator {
       };
       this.wards.push(ward);
 
-      // Start from center cell, flood-fill outward
       if (pw.cx >= 0 && pw.cx < this.w && pw.cy >= 0 && pw.cy < this.h && this.grid[pw.cy]![pw.cx] === 0) {
         this.grid[pw.cy]![pw.cx] = wardIdx + 1;
         ward.cells.push({ x: pw.cx, y: pw.cy });
       }
 
-      const queue: { x: number; y: number }[] = [{ x: pw.cx, y: pw.cy }];
       const targetSize = pw.type.size * pw.type.size * 0.5;
-      let expanded = 0;
-
-      while (queue.length > 0 && ward.cells.length < targetSize && expanded < 500) {
-        expanded++;
-        const c = queue.shift()!;
-        const dirs = this.rng.shuffle([[0,-1],[0,1],[-1,0],[1,0]]);
-        for (const [dx, dy] of dirs) {
-          const nx = c.x + dx, ny = c.y + dy;
-          if (nx < 1 || ny < 1 || nx >= this.w - 1 || ny >= this.h - 1) continue;
-          if (this.grid[ny]![nx] !== 0) continue;
-          if (ward.cells.length >= targetSize) break;
-
-          this.grid[ny]![nx] = wardIdx + 1;
-          ward.cells.push({ x: nx, y: ny });
-          queue.push({ x: nx, y: ny });
+      // Use simple iterative expansion: repeatedly scan for cells adjacent to ward
+      for (let iter = 0; iter < 100 && ward.cells.length < targetSize; iter++) {
+        const newCells: { x: number; y: number }[] = [];
+        for (const cell of ward.cells) {
+          if (ward.cells.length + newCells.length >= targetSize) break;
+          const dirs = this.rng.shuffle([[0,-1],[0,1],[-1,0],[1,0]]);
+          for (const [dx, dy] of dirs) {
+            const nx = cell.x + dx, ny = cell.y + dy;
+            if (nx < 1 || ny < 1 || nx >= this.w - 1 || ny >= this.h - 1) continue;
+            if (this.grid[ny]![nx] !== 0) continue;
+            if (ward.cells.length + newCells.length >= targetSize) break;
+            this.grid[ny]![nx] = wardIdx + 1;
+            newCells.push({ x: nx, y: ny });
+          }
         }
+        if (newCells.length === 0) break;
+        ward.cells.push(...newCells);
       }
     }
 
