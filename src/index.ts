@@ -9,6 +9,16 @@ export type { DungeonData, Rect, Door as DungeonDoor, Note, Column, DungeonTag }
 // Realm (Perilous Shores)
 export { RealmGenerator } from "./realm/generator.js";
 export { renderRealm } from "./realm/render.js";
+
+// City (Medieval Fantasy City Generator)
+export { CityGenerator } from "./city/generator.js";
+export type { CityData } from "./city/generator.js";
+
+// Village
+export { VillageGenerator } from "./village/generator.js";
+export type { VillageData } from "./village/generator.js";
+
+// Shared types
 export type * from "./core/types.js";
 
 // Shared libraries
