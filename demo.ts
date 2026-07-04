@@ -50,8 +50,8 @@ if (mode === "world") {
 } else if (mode === "city") {
   console.log(`🏰 City seed=${seed}\n`);
   const city = new CityGenerator().generate(seed);
-  console.log(`Districts: ${city.districts.length}  Buildings: ${city.buildings.length}`);
-  for (const d of city.districts) console.log(`  ${d.type}: ${d.name}`);
+  console.log(`Wards: ${city.wards.length}  Buildings: ${city.buildings.length}`);
+  for (const w of city.wards) console.log(`  ${w.type}: ${w.name} [${w.cells.length}c]`);
 
 } else if (mode === "village") {
   console.log(`🏡 Village seed=${seed}\n`);
@@ -59,6 +59,7 @@ if (mode === "world") {
   console.log(`Buildings: ${v.buildings.length}  Roads: ${v.roads.length}`);
   if (v.palisade) console.log("Palisade: yes");
   if (v.water) console.log("Water: yes");
+  console.log("Forest trees:", v.forest.length, "Farmland:", v.farmland.length);
 
 } else if (mode === "dungeon") {
   console.log(`🕳  Dungeon seed=${seed}\n`);
