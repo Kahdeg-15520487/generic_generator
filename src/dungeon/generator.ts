@@ -110,26 +110,14 @@ export class DungeonGenerator {
       };
       this.rooms.push(seedRoom);
 
-      // Greedy expansion (limit total attempts to control density)
-      let grew = true;
+      // Greedy expansion (limit to prevent solid blocks)
       let totalAttempts = 0;
-      while (grew && this.countValidRooms() < this.maxSize && totalAttempts < 200) {
-        grew = false;
-        const shuffled = this.rng.shuffle([...this.rooms]);
-        for (const parent of shuffled.slice(0, 10)) { // try only 10 rooms per iteration
-          if (this.countValidRooms() >= this.maxSize) break;
-          // Try each direction
-          const dirs = this.rng.shuffle([...DIRS]);
-          for (const dir of dirs) {
-            if (this.countValidRooms() >= this.maxSize) break;
-            const size = this.randomRoomSize();
-            const room = this.tryPlaceRoom(parent, dir, size.w, size.h);
-            totalAttempts++;
-            if (room) {
-              grew = true;
-            }
-          }
-        }
+      while (this.countValidRooms() < this.maxSize && totalAttempts < 60) {
+        totalAttempts++;
+        const parent = this.rng.pick(this.rooms);
+        const dir = this.rng.pick(DIRS);
+        const size = this.randomRoomSize();
+        this.tryPlaceRoom(parent, dir, size.w, size.h);
       }
 
       if (this.countValidRooms() >= this.minSize) break;
