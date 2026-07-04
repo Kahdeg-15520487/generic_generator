@@ -1,2 +1,2 @@
 export { RealmGenerator } from "./generator.js";
-export { renderRealm } from "./render.js";
+export type { RealmData, TerrainCell, Settlement, POI, Road, TemplateName } from "./generator.js";

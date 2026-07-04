@@ -1,121 +1,81 @@
 /**
- * Full hierarchical world demo
- *   npx tsx demo.ts world 42
- *   npx tsx demo.ts realm 42      — realm only
- *   npx tsx demo.ts city 42       — standalone city
- *   npx tsx demo.ts village 42    — standalone village
- *   npx tsx demo.ts dungeon 42    — standalone dungeon
- *   npx tsx demo.ts dwellings 42  — standalone dwelling
+ * Watabou Generators demo
+ *   npx tsx demo.ts world 42    — full world with cross-level generation
+ *   npx tsx demo.ts realm 42    — realm only
+ *   npx tsx demo.ts city 42     — city only
+ *   npx tsx demo.ts village 42  — village only
+ *   npx tsx demo.ts dungeon 42  — dungeon only
  */
-import { WorldBuilder } from "./src/core/worldbuilder.js";
-import { RealmGenerator, CityGenerator, VillageGenerator, DwellingsGenerator, DungeonGenerator } from "./src/index.js";
-import { renderRealm } from "./src/realm/render.js";
-import { renderFloor } from "./src/render.js";
-import { renderDungeon } from "./src/dungeon/render.js";
-import { renderVillage } from "./src/village/render.js";
+import { DwellingsGenerator, DungeonGenerator, RealmGenerator, CityGenerator, VillageGenerator, WorldBuilder } from "./src/index.js";
 
 const args = process.argv.slice(2);
-const mode = args[0] ?? "world";
-const seed = parseInt(args[1]!, 10) || Math.floor(Math.random() * 2147483647);
-const tags = args.slice(2);
+const mode = args[0] ?? "realm";
+const rest = ["realm","city","village","dungeon","dwellings","world"].includes(args[0]!) ? args.slice(1) : args;
+const seed = parseInt(rest[0]!, 10) || Math.floor(Math.random() * 2147483647);
+const tags = rest.slice(1).filter(a => !a.startsWith("--"));
 
 if (mode === "world") {
   console.log(`🌐 Building world with seed=${seed}...\n`);
-
   const builder = new WorldBuilder();
   const world = builder.build({ seed, depth: 3 });
-  const realm = world.locations[world.realmId]!;
-  const realmData = realm.data as any;
+  const realm = world.realmData;
 
   console.log(`╔══════════════════════════════════════╗`);
   console.log(`║  WORLD #${seed}  —  ${Object.keys(world.locations).length} locations`);
-  console.log(`╠══════════════════════════════════════╣`);
-  console.log(`║  Realm:  ${realmData.settlements.length} settlements, ${realmData.pointsOfInterest.length} POIs`);
-  console.log(`║  Road segments: ${world.roadNetwork.segments.length}`);
+  console.log(`║  Realm: ${realm.settlements.length} settlements, ${realm.pois.length} POIs`);
+  console.log(`║  Template: ${realm.template}`);
   console.log(`╚══════════════════════════════════════╝\n`);
 
-  // Print realm
-  console.log(renderRealm(realmData));
+  // Terrain summary
+  const counts: Record<string, number> = {};
+  for (const t of realm.terrain) counts[t.type] = (counts[t.type] || 0) + 1;
+  console.log("Terrain:", Object.entries(counts).map(([k,v]) => `${k}:${v}`).join(" "));
+  console.log(`Settlements: ${realm.settlements.length}  POIs: ${realm.pois.length}  Roads: ${realm.roads.length}\n`);
 
-  // Print all locations with their connections
-  console.log(`\n─── Location Tree ───`);
+  // Print location tree
   printTree(world, world.realmId, 0);
-
-  // Navigate into first city
-  const firstCity = realm.children.find(id => world.locations[id]!.type === "city");
-  if (firstCity) {
-    const cityLoc = world.locations[firstCity]!;
-    console.log(`\n─── Entering ${cityLoc.name} ───`);
-    const cityData = world.cache[firstCity] as any;
-    console.log(`Districts: ${cityData?.districts?.length ?? 0}  Buildings: ${cityData?.buildings?.length ?? 0}`);
-
-    // Check for dwellings inside buildings
-    const dwellings = cityLoc.children.filter(id => world.locations[id]!.type === "dwelling");
-    if (dwellings.length > 0) {
-      console.log(`\n  Interior dwellings: ${dwellings.length}`);
-      for (const dwId of dwellings.slice(0, 1)) {
-        const dw = world.locations[dwId]!;
-        const house = dw.data as any;
-        console.log(`  ── Entering ${dw.name} ──`);
-        if (house?.floors) {
-          const groundFloor = house.floors.find((f: any) => f.level === 0);
-          if (groundFloor) {
-            console.log(renderFloor(groundFloor));
-          }
-        }
-      }
-    }
-  }
-
-  // Navigate into first dungeon POI
-  const firstDungeon = realm.children.find(id => world.locations[id]!.type === "dungeon");
-  if (firstDungeon) {
-    const dungLoc = world.locations[firstDungeon]!;
-    const dungData = world.cache[firstDungeon] as any;
-    console.log(`\n─── Entering ${dungLoc.name} ──`);
-    if (dungData?.rects) {
-      console.log(`${dungData.title}\nRooms: ${dungData.rects.length}  Doors: ${dungData.doors?.length ?? 0}\n`);
-      console.log(renderDungeon(dungData));
-    }
-  }
 
   import("fs").then(fs => fs.writeFileSync("world_output.json", JSON.stringify(world, null, 2)));
   console.log(`\n💾 world_output.json`);
 
 } else if (mode === "realm") {
-  const world = new RealmGenerator().generate(seed);
-  console.log(renderRealm(world.locations[world.realmId]!.data as any));
+  console.log(`🌍 Realm seed=${seed}\n`);
+  const realm = new RealmGenerator().generate(seed, "island");
+  const counts: Record<string, number> = {};
+  for (const t of realm.terrain) counts[t.type] = (counts[t.type] || 0) + 1;
+  console.log(`Template: ${realm.template}  Size: ${realm.width}×${realm.height}`);
+  console.log("Terrain:", Object.entries(counts).map(([k,v]) => `${k}:${v}`).join(" "));
+  console.log(`Settlements: ${realm.settlements.length}  POIs: ${realm.pois.length}  Roads: ${realm.roads.length}`);
+
 } else if (mode === "city") {
-  const c = new CityGenerator().generate(seed);
-  console.log(`Districts: ${c.districts.length}  Buildings: ${c.buildings.length}`);
-  for (const d of c.districts) console.log(`  ${d.type}: ${d.name}`);
+  console.log(`🏰 City seed=${seed}\n`);
+  const city = new CityGenerator().generate(seed);
+  console.log(`Districts: ${city.districts.length}  Buildings: ${city.buildings.length}`);
+  for (const d of city.districts) console.log(`  ${d.type}: ${d.name}`);
+
 } else if (mode === "village") {
+  console.log(`🏡 Village seed=${seed}\n`);
   const v = new VillageGenerator().generate(seed);
   console.log(`Buildings: ${v.buildings.length}  Roads: ${v.roads.length}`);
-  console.log(renderVillage(v));
+  if (v.palisade) console.log("Palisade: yes");
+  if (v.water) console.log("Water: yes");
+
 } else if (mode === "dungeon") {
+  console.log(`🕳  Dungeon seed=${seed}\n`);
   const d = new DungeonGenerator().generate(seed, tags);
-  console.log(`${d.title}\n${d.story}\nRooms: ${d.rects.length}\n`);
-  console.log(renderDungeon(d));
+  console.log(`${d.title}\n${d.story}\nRooms: ${d.rects.length}  Doors: ${d.doors?.length ?? 0}`);
+
 } else {
+  console.log(`🏠 Dwellings seed=${seed}\n`);
   const h = new DwellingsGenerator().generate(seed, tags);
-  for (const f of [...h.floors].sort((a,b) => a.level - b.level))
-    console.log(renderFloor(f));
+  console.log(`Floors: ${h.floors.length}`);
 }
 
 function printTree(world: any, locId: string, depth: number) {
   const loc = world.locations[locId];
   if (!loc) return;
   const prefix = "  ".repeat(depth) + (depth > 0 ? "└─ " : "");
-  const icon: Record<string, string> = { realm: "🌍", city: "🏰", village: "🏡", dwelling: "🏠", dungeon: "◈", cave: "○", landmark: "▲", ruin: "▣", tower: "♜", camp: "⚑" };
-  console.log(`${prefix}${icon[loc.type] ?? "·"} ${loc.name} (${loc.type}) seed=${loc.seed}`);
-  if (loc.roadConnections?.length > 0) {
-    for (const rc of loc.roadConnections) {
-      const target = world.locations[rc.targetId];
-      console.log(`${"  ".repeat(depth+1)}↕ road to ${target?.name ?? rc.targetId}`);
-    }
-  }
-  for (const childId of loc.children) {
-    printTree(world, childId, depth + 1);
-  }
+  const icon: Record<string,string> = {realm:"🌍",city:"🏰",village:"🏡",dwelling:"🏠",dungeon:"◈",cave:"○"};
+  console.log(`${prefix}${icon[loc.type]??"·"} ${loc.name} (${loc.type})`);
+  for (const childId of loc.children || []) printTree(world, childId, depth + 1);
 }

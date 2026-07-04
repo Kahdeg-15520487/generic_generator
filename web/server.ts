@@ -1,28 +1,16 @@
 // ===========================================================================
 // Web UI server for multi-level world navigation
-//   npx tsx web/server.ts
 // ===========================================================================
 
 import http from "node:http";
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
-import { WorldBuilder } from "../src/core/worldbuilder.js";
-import { RealmGenerator } from "../src/realm/generator.js";
-import { CityGenerator } from "../src/city/generator.js";
-import { VillageGenerator } from "../src/village/generator.js";
-import { DungeonGenerator } from "../src/dungeon/generator.js";
-import { CaveGenerator } from "../src/cave/generator.js";
-import { DwellingsGenerator } from "../src/dwellings/generator.js";
-import type { GeneratedWorld, World, Location } from "../src/core/worldbuilder.js";
+import { WorldBuilder, type GeneratedWorld } from "../src/core/worldbuilder.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const MIME: Record<string, string> = {
-  ".html": "text/html", ".js": "text/javascript", ".css": "text/css",
-  ".json": "application/json", ".png": "image/png",
-};
+const MIME: Record<string, string> = { ".html":"text/html",".js":"text/javascript",".css":"text/css",".json":"application/json" };
 
-// ── Global world state ──────────────────────────────────────────────────────
 let world: GeneratedWorld | null = null;
 
 function getWorld(): GeneratedWorld {
@@ -30,78 +18,54 @@ function getWorld(): GeneratedWorld {
   return world;
 }
 
-// ── API handlers ────────────────────────────────────────────────────────────
-
-function apiWorld(_url: URL): object {
+function apiWorld(): object {
   const w = getWorld();
-  const realm = w.locations[w.realmId]!;
-  const realmData = realm.data as any;
+  const r = w.realmData;
   return {
     realmId: w.realmId,
     locationCount: Object.keys(w.locations).length,
-    realm: {
-      name: realm.name,
-      settlements: realmData.settlements.map((s: any) => ({
-        id: s.locationId, name: s.name, type: s.type, pos: s.pos, size: s.size,
-      })),
-      pois: realmData.pointsOfInterest.map((p: any) => ({
-        id: p.locationId, name: p.name, type: p.type, pos: p.pos,
-      })),
-      terrain: realmData.terrain.map((t: any) => ({
-        x: t.pos.x, y: t.pos.y, type: t.type, elevation: t.elevation,
-      })),
-    },
-    roadSegments: w.roadNetwork.segments.map(s => ({
-      from: s.from, to: s.to, type: s.type,
-    })),
+    template: r.template,
+    terrain: r.terrain,
+    settlements: r.settlements,
+    pois: r.pois,
+    roads: r.roads,
   };
 }
 
-function apiLocation(url: URL): object {
-  const id = url.searchParams.get("id") || "";
+function apiLocation(id: string): object {
   const w = getWorld();
   const loc = w.locations[id];
   if (!loc) return { error: "not found" };
-
-  const data = w.cache[id] || loc.data;
   return {
     id: loc.id, type: loc.type, name: loc.name, seed: loc.seed,
     parentId: loc.parentId,
     children: loc.children.map(cid => {
-      const child = w.locations[cid];
-      return child ? { id: cid, type: child.type, name: child.name } : null;
+      const c = w.locations[cid];
+      return c ? { id: cid, type: c.type, name: c.name } : null;
     }).filter(Boolean),
-    roadConnections: loc.roadConnections,
-    data: data,
+    data: w.cache[id] || loc.data,
   };
 }
 
-function apiRegenerate(url: URL): object {
-  const seed = parseInt(url.searchParams.get("seed") || "0") || Math.floor(Math.random() * 2147483647);
-  world = new WorldBuilder().build({ seed, depth: 3 });
-  return { seed, locationCount: Object.keys(world.locations).length };
+function apiRegenerate(seed: number): object {
+  world = new WorldBuilder().build({ seed: seed || Math.floor(Math.random() * 2147483647), depth: 3 });
+  return { seed: world.seed, locationCount: Object.keys(world.locations).length };
 }
-
-// ── Server ──────────────────────────────────────────────────────────────────
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url || "/", `http://localhost:${PORT}`);
-  const pathname = url.pathname;
+  const pn = url.pathname;
 
-  // API routes
-  if (pathname === "/api/world") return json(res, apiWorld(url));
-  if (pathname === "/api/location") return json(res, apiLocation(url));
-  if (pathname === "/api/regenerate") return json(res, apiRegenerate(url));
+  if (pn === "/api/world") return json(res, apiWorld());
+  if (pn === "/api/location") return json(res, apiLocation(url.searchParams.get("id") || ""));
+  if (pn === "/api/regenerate") return json(res, apiRegenerate(parseInt(url.searchParams.get("seed") || "0")));
 
-  // Static files
-  let filePath = pathname === "/" ? "/index.html" : pathname;
-  filePath = path.join(__dirname, filePath);
-  if (!filePath.startsWith(__dirname)) { res.writeHead(403); res.end(); return; }
-
-  const ext = path.extname(filePath).toLowerCase();
-  fs.readFile(filePath, (err, data) => {
+  let fp = pn === "/" ? "/index.html" : pn;
+  fp = path.join(__dirname, fp);
+  if (!fp.startsWith(__dirname)) { res.writeHead(403); res.end(); return; }
+  fs.readFile(fp, (err, data) => {
     if (err) { res.writeHead(404); res.end("Not Found"); return; }
-    res.writeHead(200, { "Content-Type": MIME[ext] || "application/octet-stream" });
+    res.writeHead(200, { "Content-Type": MIME[path.extname(fp)] || "application/octet-stream" });
     res.end(data);
   });
 });
@@ -111,7 +75,5 @@ function json(res: http.ServerResponse, data: object) {
   res.end(JSON.stringify(data));
 }
 
-const PORT = parseInt(process.env.PORT || "3000");
-server.listen(PORT, () => {
-  console.log(`\n  🌍 World Navigator → http://localhost:${PORT}\n`);
-});
+const PORT = parseInt(process.env.PORT || "5174");
+server.listen(PORT, () => console.log(`\n  🌍 World Navigator → http://localhost:${PORT}\n`));
