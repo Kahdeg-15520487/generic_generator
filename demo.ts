@@ -45,6 +45,7 @@ if (mode === "world") {
   for (const t of realm.terrain) counts[t.type] = (counts[t.type] || 0) + 1;
   console.log(`Template: ${realm.template}  Size: ${realm.width}×${realm.height}`);
   console.log("Terrain:", Object.entries(counts).map(([k,v]) => `${k}:${v}`).join(" "));
+  console.log(`Islands: ${realm.islands?.length ?? 0}  Rivers: ${realm.rivers?.length ?? 0}  SeaRoutes: ${realm.seaRoutes?.length ?? 0}`);
   console.log(`Settlements: ${realm.settlements.length}  POIs: ${realm.pois.length}  Roads: ${realm.roads.length}`);
 
 } else if (mode === "city") {
