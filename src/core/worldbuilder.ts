@@ -5,7 +5,7 @@
 
 import { RNG } from "../lib/rng.js";
 import { RealmGenerator, type RealmData, type Settlement, type POI } from "../realm/generator.js";
-import { CityGenerator, type CityData } from "../city/generator.js";
+import { CityGenerator, type CityData } from "../city/model.js";
 import { VillageGenerator, type VillageData } from "../village/generator.js";
 import { DungeonGenerator } from "../dungeon/generator.js";
 import { CaveGenerator } from "../cave/generator.js";
@@ -84,7 +84,7 @@ export class WorldBuilder {
 
       if (s.type === "city") {
         const cityGen = new CityGenerator();
-        const cityData = cityGen.generate(locSeed);
+        const cityData = cityGen.generate({ seed: locSeed });
         world.cache[locId] = cityData;
         world.locations[locId] = {
           id: locId, type: "city", name: s.name, seed: locSeed,
@@ -130,10 +130,21 @@ export class WorldBuilder {
       const loc = world.locations[childId];
       if (!loc || loc.type !== "city") continue;
       const cityData = world.cache[childId] as CityData;
-      if (!cityData?.buildings) continue;
+      if (!cityData?.districts) continue;
+
+      // Count lots across all districts to determine number of interiors
+      let totalLots = 0;
+      for (const district of cityData.districts) {
+        for (const group of district.groups) {
+          for (const block of group.blocks) {
+            totalLots += block.lots.length;
+          }
+        }
+      }
+      if (totalLots === 0) continue;
 
       const rng = new RNG(loc.seed);
-      const numInteriors = Math.min(3, cityData.buildings.length);
+      const numInteriors = Math.min(3, totalLots);
       for (let j = 0; j < numInteriors; j++) {
         const interiorSeed = childSeed(loc.seed, j + 100);
         const interiorId = `dwelling-${interiorSeed}`;

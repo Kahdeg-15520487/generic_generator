@@ -1,8 +1,8 @@
 export { RealmGenerator } from "./realm/generator.js";
 export type { RealmData, TerrainCell, Settlement, POI, Road, TemplateName } from "./realm/generator.js";
 export { renderRealm } from "./realm/render.js";
-export { CityGenerator } from "./city/generator.js";
-export type { CityData } from "./city/generator.js";
+export { generateCity } from "./city/generator.js";
+export { CityGenerator, type CityData } from "./city/model.js";
 export { VillageGenerator } from "./village/generator.js";
 export type { VillageData } from "./village/generator.js";
 export { DwellingsGenerator } from "./dwellings/generator.js";

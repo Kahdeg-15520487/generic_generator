@@ -1,2 +1,2 @@
-export { CityGenerator } from "./generator.js";
-export type { CityData } from "./generator.js";
+export { generateCity } from "./generator.js";
+export { CityGenerator, type CityData } from "./model.js";

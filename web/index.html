@@ -266,14 +266,14 @@ function renderCity(view, data, loc) {
     for (let i = 0; i < Math.min(blds.length, (loc.children||[]).length); i++) {
       const b = blds[i];
       if (mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h) {
-        const childId = loc.children[i]; if (childId) navigateTo(childId); break;
+        const child = loc.children[i]; if (child) navigateTo(child.id); break;
       }
     }
   };
 
   view.innerHTML = '';
   view.appendChild(canvas);
-  view.innerHTML += '<div class="stats"><span>' + loc.name + '</span><br>' + (data.wards||[]).length + ' wards<br>' + blds.length + ' buildings</div>';
+  view.insertAdjacentHTML('beforeend', '<div class="stats"><span>' + loc.name + '</span><br>' + (data.wards||[]).length + ' wards<br>' + blds.length + ' buildings</div>');
 }
 
 function renderVillage(view, data, _loc) {
@@ -327,7 +327,7 @@ function renderVillage(view, data, _loc) {
 
   view.innerHTML = '';
   view.appendChild(canvas);
-  view.innerHTML += '<div class="stats"><span>Village</span><br>' + (data.buildings||[]).length + ' buildings<br>' + (data.roads||[]).length + ' roads</div>';
+  view.insertAdjacentHTML('beforeend', '<div class="stats"><span>Village</span><br>' + (data.buildings||[]).length + ' buildings<br>' + (data.roads||[]).length + ' roads</div>');
 }
 
 function renderDungeon(view, data) {
@@ -367,7 +367,7 @@ function renderDungeon(view, data) {
 
   view.innerHTML = '';
   view.appendChild(canvas);
-  view.innerHTML += `<div class="stats"><span>${data.title||'Dungeon'}</span><br>${rects.length} rooms<br>${data.doors?.length||0} doors<br>${data.notes?.length||0} notes</div>`;
+  view.insertAdjacentHTML('beforeend', `<div class="stats"><span>${data.title||'Dungeon'}</span><br>${rects.length} rooms<br>${data.doors?.length||0} doors<br>${data.notes?.length||0} notes</div>`);
 }
 
 function renderCave(view, data) {
@@ -402,7 +402,7 @@ function renderCave(view, data) {
 
   view.innerHTML = '';
   view.appendChild(canvas);
-  view.innerHTML += `<div class="stats"><span>${data.title||'Cave'}</span><br>${w}×${h} grid<br>${data.areas?.length||0} chambers<br>${data.exits?.length||0} exits</div>`;
+  view.insertAdjacentHTML('beforeend', `<div class="stats"><span>${data.title||'Cave'}</span><br>${w}×${h} grid<br>${data.areas?.length||0} chambers<br>${data.exits?.length||0} exits</div>`);
 }
 
 function renderDwelling(view, data) {
@@ -444,7 +444,7 @@ function renderDwelling(view, data) {
 
   view.innerHTML = '';
   view.appendChild(canvas);
-  view.innerHTML += `<div class="stats"><span>Dwelling</span><br>${data.floors?.length||0} floors<br>${groundFloor.rooms.length} rooms</div>`;
+  view.insertAdjacentHTML('beforeend', `<div class="stats"><span>Dwelling</span><br>${data.floors?.length||0} floors<br>${groundFloor.rooms.length} rooms</div>`);
 }
 
 // ── UI ─────────────────────────────────────────────────────────────────────

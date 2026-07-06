@@ -15,5 +15,8 @@
     "js-beautify": "^2.0.3",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"
+  },
+  "dependencies": {
+    "delaunator": "^5.1.0"
   }
 }
